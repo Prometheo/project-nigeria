@@ -169,7 +169,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.backbutton.clicked.connect(self.print_path)
         icon = QIcon("assets/icon.png")
         self.backbutton.setIcon(icon)
-        self.switch_button = QPushButton("brink")
+        self.switch_button = QPushButton("screen 2")
         #bl.setText("Break Bad!!")
         
         
