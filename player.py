@@ -1,14 +1,9 @@
 from PyQt5.QtCore import QPoint, QRect, QSize, Qt, pyqtSignal
-from PyQt5.QtWidgets import (
-    QFrame, QGridLayout, QHBoxLayout,
-    QLabel, QLayout, QPushButton, QSizePolicy,
-    QSpacerItem, QVBoxLayout, QWidget,
-    QFileSystemModel, QTreeView, QLineEdit
-)
+from PyQt5.QtWidgets import QDateEdit, QFileSystemModel, QFrame, QGridLayout, QHBoxLayout, QLabel, QLayout, QLineEdit, QListWidget, QListWidgetItem, QPushButton, QSizePolicy, QSlider, QSpacerItem, QStackedWidget, QTreeView, QVBoxLayout, QWidget
 from random import choice
 from PyQt5 import QtGui, QtWidgets
 import sys
-from PyQt5.QtGui import QPixmap
+from PyQt5.QtGui import QIcon, QPixmap
 
 
 class FlowLayout(QLayout):
@@ -120,9 +115,15 @@ class FlowLayout(QLayout):
         return new_height
 
 
-class MainScreen(QtWidgets.QWidget):
+class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, directory):
         super().__init__()
+        self.setWindowTitle('Remote CAM Controller')
+        self.setGeometry(0, 0, 900, 900)
+        self.set_ui(directory)
+
+    def set_ui(self, directory):
+        self.widget = QtWidgets.QWidget(self)
         # self.body of the screen
         self.body = QVBoxLayout()
         # main area
@@ -163,17 +164,38 @@ class MainScreen(QtWidgets.QWidget):
         self.mainframe = FlowLayout(self.rightview)
 
         # test thumbnail placeholder
-        image = QPixmap("fm.png")
-        sized_img = image.scaled(111, 111, Qt.KeepAspectRatio)
+        mv = QWidget()
+        self.backbutton = QPushButton()
+        self.backbutton.clicked.connect(self.print_path)
+        icon = QIcon("assets/icon.png")
+        self.backbutton.setIcon(icon)
+        self.switch_button = QPushButton("brink")
+        #bl.setText("Break Bad!!")
+        
+        
+        ll = QLabel()
+        #ll.setPixmap(im)
+        #lb.clicked.connect(self.print_path)
+        self.switch_button.clicked.connect(self.print_path)
+        
 
         # test data
-        for i in range(25):
+        thumb_list = ["assets/grafik 5.png", "assets/grafik 6.png", "assets/grafik 8.png", "assets/grafik 7.png", "assets/grafik 9.png"]
+        for i in thumb_list:
+            im = QPixmap(i)
+            sized_img = im.scaled(111, 111)
             btn = QLabel("Bloom")
             btn.setFixedSize(111, 111)
             btn.setPixmap(sized_img)
             self.mainframe.addWidget(btn)
         # space the thumbnails
         self.mainframe.setSpacing(10)
+        self.mainframe.addWidget(self.switch_button)
+
+        # screen 2 configs
+        # create a frame that would be later splitted into two
+        self.page_frame = QVBoxLayout()
+        self.rightview2.setLayout(self.page_frame)
 
         # set layout for view
         self.rightview.setLayout(self.mainframe)
@@ -182,14 +204,113 @@ class MainScreen(QtWidgets.QWidget):
         scroller.setWidgetResizable(True)
         scroller.setWidget(self.rightview)
         scroller.setContentsMargins(0,0,0,0)
+        scroller2 = QtWidgets.QScrollArea()
+        scroller2.setWidgetResizable(True)
+        scroller2.setWidget(self.rightview2)
         # add the widgets to screen
+        self.stackedWidget = QStackedWidget()
+        self.stackedWidget.addWidget(scroller)
+        self.stackedWidget.addWidget(scroller2)
         self.mainview.addWidget(self.wrapperwig, 30)
-        self.mainview.addWidget(scroller, 70) # make it take 70% of screen
-        self.mainview.addWidget(self.rightview2, 70)
+        self.mainview.addWidget(self.stackedWidget, 70) # make it take 70% of screen
+        #self.mainview.addWidget(self.rightview2, 70)
         self.mainview.setSpacing(0)
+        
+        # topview for screen2
+        self.screen_frame = QWidget()
+        # main player screen 
+        self.player_frame = QFrame()
+        self.player_frame.setStyleSheet("background-color: black;")
+        # slider frame below screen
+        self.slider_frame_layout = QVBoxLayout()
+        self.slider_frame = QFrame()
+        self.slider_frame.setLayout(self.slider_frame_layout)
+        self.list_label = QListWidget()
+        self.list_label.setFlow(0)
+        for i in range(8):
+            itm = QListWidgetItem(self.list_label)
+            btn = QLabel()
+            btn.setFixedSize(111, 111)
+            btn.setPixmap(sized_img)
+            #btn.setLayout(bxr)
+            #bxr.addWidget(btn)
+            itm.setSizeHint(btn.sizeHint())
+        
+            self.list_label.addItem(itm)
+            self.list_label.setItemWidget(itm, btn)
+        self.list_label.setContentsMargins(10,10,10,10)
+        self.list_label.setFixedHeight(155)
+
+        self.date_range_lay = QHBoxLayout()
+        self.date_range = QDateEdit()
+        self.date_range_lay.addStretch()
+        self.date_range_lay.addWidget(self.date_range)
+        self.slider_frame_layout.addLayout(self.date_range_lay)
+        self.slider_frame_layout.addWidget(self.list_label)
+        self.listSlider = QSlider(Qt.Horizontal)
+        self.listSlider.setRange(0, 10)
+        self.slider_frame_layout.addWidget(self.listSlider)
+        self.label_btn = QHBoxLayout()
+        self.video_label = QLabel("<h1>CALABAR - Marian Road - ATM Gallery 2!</h1>")
+        self.label_btn.addWidget(self.backbutton)
+        self.label_btn.addStretch()
+        self.label_btn.addWidget(self.video_label)
+        self.label_btn.addStretch()
+        self.positionSlider = QSlider(Qt.Horizontal)
+        self.positionSlider.setRange(0, 100)
+        self.positionSlider.setFocusPolicy(Qt.NoFocus)
+        self.hbuttonbox = QHBoxLayout()
+        self.speakerbutton = QPushButton()
+        self.chatbutton = QPushButton()
+        self.messagebutton = QPushButton()
+        self.playbutton = QPushButton()
+        self.fwdbutton = QPushButton()
+        self.rwdbutton = QPushButton()
+        self.enlargebutton = QPushButton()
+        self.menubutton = QPushButton()
+        speakericon = QIcon("assets/speaker.png")
+        chat_icon = QIcon("assets/chat.png")
+        message_icon = QIcon("assets/message.png")
+        play_icon = QIcon("assets/play.png")
+        fwd_icon = QIcon("assets/fwd.png")
+        rwd_icon = QIcon("assets/rewind.png")
+        enlarge_icon = QIcon("assets/enlarge.png")
+        menu_icon = QIcon("assets/3dots.png")
+        self.speakerbutton.setIcon(speakericon)
+        self.chatbutton.setIcon(chat_icon)
+        self.messagebutton.setIcon(message_icon)
+        self.playbutton.setIcon(play_icon)
+        self.fwdbutton.setIcon(fwd_icon)
+        self.rwdbutton.setIcon(rwd_icon)
+        self.enlargebutton.setIcon(enlarge_icon)
+        self.menubutton.setIcon(menu_icon)
+        self.hbuttonbox.addWidget(self.speakerbutton)
+        self.hbuttonbox.addWidget(self.chatbutton)
+        self.hbuttonbox.addWidget(self.messagebutton)
+        
+        self.hbuttonbox.addStretch()
+        self.hbuttonbox.addWidget(self.rwdbutton)
+        self.hbuttonbox.addWidget(self.playbutton)
+        self.hbuttonbox.addWidget(self.fwdbutton)
+        self.hbuttonbox.addStretch()
+        self.hbuttonbox.addWidget(self.enlargebutton)
+        self.hbuttonbox.addWidget(self.menubutton)
+
+        self.screen_frame_layout = QVBoxLayout()
+        self.screen_frame_layout.addLayout(self.label_btn)
+        self.screen_frame_layout.addWidget(self.player_frame, Qt.AlignCenter)
+        self.screen_frame_layout.addWidget(self.positionSlider)
+        self.screen_frame_layout.addLayout(self.hbuttonbox)
+        self.screen_frame_layout.addStretch(5)
+        self.screen_frame.setLayout(self.screen_frame_layout)
+        self.page_frame.addWidget(self.screen_frame, 60)
+        self.page_frame.addWidget(self.slider_frame, 40)
+    
         # adjust margin
         self.rightview.setContentsMargins(25,0,0,0)
         # set object name to make css targetting easier
+        self.widget.setLayout(self.body)
+        self.setCentralWidget(self.widget)
         self.fileview.setObjectName('fv')
         self.rightview.setObjectName('rightview')
         self.mainview.setObjectName('mainview')
@@ -197,16 +318,17 @@ class MainScreen(QtWidgets.QWidget):
         self.wrapperwig.setObjectName('wrapper')
         self.search_box.setObjectName('search_box')
         scroller.setObjectName('mini')
+        scroller2.setObjectName('mini2')
+        self.speakerbutton.setObjectName("playb")
+        self.playbutton.setObjectName("playb")
+        self.chatbutton.setObjectName("playb")
+        self.messagebutton.setObjectName("playb")
+        self.rwdbutton.setObjectName("playb")
+        self.fwdbutton.setObjectName("playb")
+        self.enlargebutton.setObjectName("playb")
+        self.menubutton.setObjectName("playb")
+        self.backbutton.setObjectName("nav")
 
-
-class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, dirr):
-        super().__init__()
-        self.setWindowTitle('Remote CAM Controller')
-        self.setMinimumSize(600, 800)
-        self.widget = QtWidgets.QWidget(self)
-        self.widget.setLayout(MainScreen(dirr).body)
-        self.setCentralWidget(self.widget)
         self.widget.setStyleSheet("""
         #all {
             background-color: #E5E5E5;
@@ -214,9 +336,16 @@ class MainWindow(QtWidgets.QMainWindow):
         #wrapper {
             background-color: #E5E5E5;
         }
-        #mainframe {
-            background-color: #E5E5E5;
+        #playb {
             border: None;
+        }
+        #nav {
+            border: 2px solid #000000;
+            height: 40px;
+            width: 40px;
+        }
+        #mainframe {
+           
         }
         #rightview {
             border: None;
@@ -225,6 +354,12 @@ class MainWindow(QtWidgets.QMainWindow):
             background-color: #E5E5E5;
         }
         #mini {
+            margin: 0px;
+            padding: 10px;
+            border-top: None;
+            border-left: 1px solid black;
+        }
+        #mini2 {
             margin: 0px;
             padding: 10px;
             border-top: None;
@@ -246,7 +381,50 @@ class MainWindow(QtWidgets.QMainWindow):
             margin-bottom: 0px;
             background-color: #E6E6E6;
             }
+        QPushButton {
+            width: 30;
+            height: 30;
+        }
+        QSlider::groove:horizontal {
+        border: 1px solid #999999;
+        height: 10px;
+
+        border-radius: 9px;
+        }
+
+        QSlider::handle:horizontal {
+        width: 18px;
+        background-color: white;
+        border: 1.5px solid #0078D4;
+        border-radius: 9px;
+        height: 78px;
+        margin: -5px 0;
+        }
+
+        QSlider::add-page:qlineargradient {
+        background: lightgrey;
+        border-top-right-radius: 9px;
+        border-bottom-right-radius: 9px;
+        border-top-left-radius: 0px;
+        border-bottom-left-radius: 0px;
+        }
+
+        QSlider::sub-page:qlineargradient {
+        background: #0078D4;
+        border-top-right-radius: 0px;
+        border-bottom-right-radius: 0px;
+        border-top-left-radius: 9px;
+        border-bottom-left-radius: 9px;
+        }
         """)
+
+    def print_path(self, index):
+        if self.stackedWidget.currentIndex() == 0:
+            self.stackedWidget.setCurrentIndex(1)
+        else:
+            self.stackedWidget.setCurrentIndex(0)
+        print(self.stackedWidget.currentIndex())
+        
 
 
 if __name__ == '__main__':
