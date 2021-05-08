@@ -1,9 +1,23 @@
-from PyQt5.QtCore import QPoint, QRect, QSize, Qt, pyqtSignal
-from PyQt5.QtWidgets import QDateEdit, QFileSystemModel, QFrame, QGridLayout, QHBoxLayout, QLabel, QLayout, QLineEdit, QListWidget, QListWidgetItem, QPushButton, QSizePolicy, QSlider, QSpacerItem, QStackedWidget, QTreeView, QVBoxLayout, QWidget
+from PyQt6.QtCore import (
+    QPoint, QRect, QSize, Qt,
+    pyqtSignal, QAbstractListModel,
+    QModelIndex, QTimer
+)
+from PyQt6.QtWidgets import (
+    QFrame, QGridLayout, QHBoxLayout,
+    QLabel, QLayout, QPushButton, QSizePolicy,
+    QSpacerItem, QVBoxLayout, QWidget,
+    QTreeView, QLineEdit,
+    QListView, QStackedWidget, QSlider,
+    QDateEdit, QListWidget, QListWidgetItem
+)
 from random import choice
-from PyQt5 import QtGui, QtWidgets
+from PyQt6 import QtGui, QtWidgets
 import sys
-from PyQt5.QtGui import QIcon, QPixmap
+from time import sleep
+from PyQt6.QtGui import QIcon, QPixmap, QFileSystemModel
+import os
+import vlc
 
 
 class FlowLayout(QLayout):
@@ -93,9 +107,9 @@ class FlowLayout(QLayout):
             space_y = self.spacing()
             if wid is not None:
                 space_x += wid.style().layoutSpacing(
-                    QSizePolicy.PushButton, QSizePolicy.PushButton, Qt.Horizontal)
+                    QSizePolicy.ControlTypes.PushButton, QSizePolicy.ControlTypes.PushButton, Qt.Orientations.Horizontal)
                 space_y += wid.style().layoutSpacing(
-                    QSizePolicy.PushButton, QSizePolicy.PushButton, Qt.Vertical)
+                    QSizePolicy.ControlTypes.PushButton, QSizePolicy.ControlTypes.PushButton, Qt.Orientations.Vertical)
 
             next_x = x + item.sizeHint().width() + space_x
             if next_x - space_x > effective_rect.right() and line_height > 0:
@@ -135,16 +149,23 @@ class MainWindow(QtWidgets.QMainWindow):
         # assign those areas to the screen(self.body)
         self.body.addWidget(self.topframe, 5)
         self.body.addWidget(self.bottomframe, 95)
+        # instanciate video
+        self.instance = vlc.Instance()
+        self.media = None
+        # create an empty vlc media player
+        self.mediaplayer = self.instance.media_player_new()
+        self.is_paused = False
         # set the spacing
         self.body.setSpacing(0)
         # define the self.fileview pane, the bottom frame split into 2
-        fmodel = QFileSystemModel()
-        fmodel.setRootPath(directory)
+        self.fmodel = QFileSystemModel()
+        self.fmodel.setRootPath(directory)
         self.fileview = QTreeView()
-        self.fileview.setModel(fmodel)
-        self.fileview.setRootIndex(fmodel.index(directory))
+        self.fileview.setModel(self.fmodel)
+        self.fileview.setRootIndex(self.fmodel.index(directory))
         self.fileview.setColumnWidth(0, 200)
         self.fileview.setAnimated(True)
+        self.fileview.clicked.connect(self.print_path)
         # file search bar
         self.wrapperwig = QFrame()
         self.twobx = QVBoxLayout(self.wrapperwig)
@@ -226,7 +247,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.slider_frame = QFrame()
         self.slider_frame.setLayout(self.slider_frame_layout)
         self.list_label = QListWidget()
-        self.list_label.setFlow(0)
+        self.list_label.setFlow(QListView.Flow(0))
         for i in range(8):
             itm = QListWidgetItem(self.list_label)
             btn = QLabel()
@@ -247,7 +268,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.date_range_lay.addWidget(self.date_range)
         self.slider_frame_layout.addLayout(self.date_range_lay)
         self.slider_frame_layout.addWidget(self.list_label)
-        self.listSlider = QSlider(Qt.Horizontal)
+        self.listSlider = QSlider(Qt.Orientations.Horizontal)
         self.listSlider.setRange(0, 10)
         self.slider_frame_layout.addWidget(self.listSlider)
         self.label_btn = QHBoxLayout()
@@ -256,9 +277,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.label_btn.addStretch()
         self.label_btn.addWidget(self.video_label)
         self.label_btn.addStretch()
-        self.positionSlider = QSlider(Qt.Horizontal)
-        self.positionSlider.setRange(0, 100)
-        self.positionSlider.setFocusPolicy(Qt.NoFocus)
+        self.positionSlider = QSlider(Qt.Orientations.Horizontal)
+        self.positionSlider.setMaximum(1000)
+        self.positionSlider.sliderMoved.connect(self.set_position)
+        self.positionSlider.sliderPressed.connect(self.set_position)
+        #self.positionSlider.setFocusPolicy(Qt.NoFocus)
         self.hbuttonbox = QHBoxLayout()
         self.speakerbutton = QPushButton()
         self.chatbutton = QPushButton()
@@ -267,23 +290,29 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fwdbutton = QPushButton()
         self.rwdbutton = QPushButton()
         self.enlargebutton = QPushButton()
+        self.enlargebutton.clicked.connect(self.go_full_screen)
         self.menubutton = QPushButton()
-        speakericon = QIcon("assets/speaker.png")
-        chat_icon = QIcon("assets/chat.png")
-        message_icon = QIcon("assets/message.png")
-        play_icon = QIcon("assets/play.png")
-        fwd_icon = QIcon("assets/fwd.png")
-        rwd_icon = QIcon("assets/rewind.png")
-        enlarge_icon = QIcon("assets/enlarge.png")
-        menu_icon = QIcon("assets/3dots.png")
-        self.speakerbutton.setIcon(speakericon)
-        self.chatbutton.setIcon(chat_icon)
-        self.messagebutton.setIcon(message_icon)
-        self.playbutton.setIcon(play_icon)
-        self.fwdbutton.setIcon(fwd_icon)
-        self.rwdbutton.setIcon(rwd_icon)
-        self.enlargebutton.setIcon(enlarge_icon)
-        self.menubutton.setIcon(menu_icon)
+        self.speakericon = QIcon("assets/speaker.png")
+        self.chat_icon = QIcon("assets/chat.png")
+        self.message_icon = QIcon("assets/message.png")
+        self.play_icon = QIcon("assets/play.png")
+        self.pause_icon = QIcon("assets/pus.png")
+        self.fwd_icon = QIcon("assets/fwd.png")
+        self.rwd_icon = QIcon("assets/rewind.png")
+        self.enlarge_icon = QIcon("assets/enlarge.png")
+        self.menu_icon = QIcon("assets/3dots.png")
+        self.speakerbutton.setIcon(self.speakericon)
+        self.speakerbutton.clicked.connect(self.set_mute_status)
+        self.chatbutton.setIcon(self.chat_icon)
+        self.messagebutton.setIcon(self.message_icon)
+        self.playbutton.setIcon(self.play_icon)
+        self.playbutton.clicked.connect(self.play_pause)
+        self.fwdbutton.setIcon(self.fwd_icon)
+        self.fwdbutton.clicked.connect(self.fast_forward)
+        self.rwdbutton.setIcon(self.rwd_icon)
+        self.rwdbutton.clicked.connect(self.rewind)
+        self.enlargebutton.setIcon(self.enlarge_icon)
+        self.menubutton.setIcon(self.menu_icon)
         self.hbuttonbox.addWidget(self.speakerbutton)
         self.hbuttonbox.addWidget(self.chatbutton)
         self.hbuttonbox.addWidget(self.messagebutton)
@@ -298,13 +327,17 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.screen_frame_layout = QVBoxLayout()
         self.screen_frame_layout.addLayout(self.label_btn)
-        self.screen_frame_layout.addWidget(self.player_frame, Qt.AlignCenter)
+        self.screen_frame_layout.addWidget(self.player_frame, Qt.Alignment.AlignCenter)
         self.screen_frame_layout.addWidget(self.positionSlider)
         self.screen_frame_layout.addLayout(self.hbuttonbox)
         self.screen_frame_layout.addStretch(5)
         self.screen_frame.setLayout(self.screen_frame_layout)
         self.page_frame.addWidget(self.screen_frame, 60)
         self.page_frame.addWidget(self.slider_frame, 40)
+
+        self.timer = QTimer(self)
+        self.timer.setInterval(100)
+        self.timer.timeout.connect(self.update_ui)
     
         # adjust margin
         self.rightview.setContentsMargins(25,0,0,0)
@@ -417,18 +450,105 @@ class MainWindow(QtWidgets.QMainWindow):
         border-bottom-left-radius: 9px;
         }
         """)
+    
+    def play_pause(self):
+        """
+        Toggle play/pause status
+        """
+        
+        if self.mediaplayer.is_playing():
+            self.mediaplayer.pause()
+            self.playbutton.setIcon(self.play_icon)
+            self.is_paused = True
+            self.timer.stop()
+            
+        else:
+            self.mediaplayer.play()
+            sleep(0.5)
+            self.playbutton.setIcon(self.pause_icon)
+            self.timer.start()
+    
+    def set_mute_status(self):
+        """
+        Set the volume
+        """
+        print(self.mediaplayer.audio_get_mute())
+        if self.mediaplayer.audio_get_mute():
+            print('change')
+            self.mediaplayer.audio_set_mute(0)
+        else:
+            self.mediaplayer.audio_set_mute(1)
+
+    def go_full_screen(self):
+        if self.screen_frame.isFullScreen():
+            self.screen_frame.setLayout(self.screen_frame_layout)
+            self.page_frame.addWidget(self.screen_frame, 60)
+            #self.df.setParent(self.deet2)
+            self.screen_frame.showNormal()
+        else:
+            self.screen_frame.setParent(None)
+            self.screen_frame.showFullScreen()
+    
 
     def print_path(self, index):
         if self.stackedWidget.currentIndex() == 0:
             self.stackedWidget.setCurrentIndex(1)
-        else:
-            self.stackedWidget.setCurrentIndex(0)
-        print(self.stackedWidget.currentIndex())
-        
+        path = self.fmodel.fileInfo(index).absoluteFilePath()
+        self.media = self.instance.media_new(path)
+        self.mediaplayer.set_media(self.media)
+        self.mediaplayer.set_hwnd(int(self.player_frame.winId()))
+        self.media.parse()
+        self.video_label.setText(f"<h1>{self.media.get_meta(0)}</h1>")
+        self.play_pause()
+    
+    def rewind(self):
+        self.timer.stop()
+        cur = self.mediaplayer.get_position()
+        self.mediaplayer.set_position(cur - 0.013)
+        self.timer.start()
+    
+    def fast_forward(self):
+        self.timer.stop()
+        cur = self.mediaplayer.get_position()
+        self.mediaplayer.set_position(cur + 0.023)
+        self.timer.start()
+    
+    def set_position(self):
+        """Set the movie position according to the position slider.
+        """
+
+        # The vlc MediaPlayer needs a float value between 0 and 1, Qt uses
+        # integer variables, so you need a factor; the higher the factor, the
+        # more precise are the results (1000 should suffice).
+
+        # Set the media position to where the slider was dragged
+        self.timer.stop()
+        pos = self.positionSlider.value()
+        self.mediaplayer.set_position(pos / 1000.0)
+        self.timer.start()
+    
+    def stop(self):
+        """Stop player
+        """
+        self.mediaplayer.stop()
+        self.playbutton.setIcon(self.play_icon)
+
+
+    def update_ui(self):
+        media_pos = int(self.mediaplayer.get_position() * 1000)
+        self.positionSlider.setValue(media_pos)
+        if not self.mediaplayer.is_playing():
+            self.timer.stop()
+
+            # After the video finished, the play button stills shows "Pause",
+            # which is not the desired behavior of a media player.
+            # This fixes that "bug".
+            if not self.is_paused:
+                self.stop()
 
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication([])
-    window = MainWindow("D:\\tutorials\\prometheus")
+    window = MainWindow("D:\\white collar")
     window.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
