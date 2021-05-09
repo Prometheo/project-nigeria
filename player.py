@@ -187,7 +187,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # test thumbnail placeholder
         mv = QWidget()
         self.backbutton = QPushButton()
-        self.backbutton.clicked.connect(self.print_path)
+        self.backbutton.clicked.connect(self.go_back)
         icon = QIcon("assets/icon.png")
         self.backbutton.setIcon(icon)
         self.switch_button = QPushButton("screen 2")
@@ -472,9 +472,7 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         Set the volume
         """
-        print(self.mediaplayer.audio_get_mute())
         if self.mediaplayer.audio_get_mute():
-            print('change')
             self.mediaplayer.audio_set_mute(0)
         else:
             self.mediaplayer.audio_set_mute(1)
@@ -489,11 +487,28 @@ class MainWindow(QtWidgets.QMainWindow):
             self.screen_frame.setParent(None)
             self.screen_frame.showFullScreen()
     
+    def go_back(self):
+        if self.stackedWidget.currentIndex() == 1:
+            self.stackedWidget.setCurrentIndex(0)
+            if self.mediaplayer.is_playing():
+                self.mediaplayer.pause()
+                self.playbutton.setIcon(self.play_icon)
+                self.is_paused = True
+                self.timer.stop()
 
     def print_path(self, index):
+        path = self.fmodel.fileInfo(index).absoluteFilePath()
+        if os.path.isdir(path):
+            if self.stackedWidget.currentIndex() == 1:
+                self.stackedWidget.setCurrentIndex(0)
+                if self.mediaplayer.is_playing():
+                    self.mediaplayer.pause()
+                    self.playbutton.setIcon(self.play_icon)
+                    self.is_paused = True
+                    self.timer.stop()
+            return
         if self.stackedWidget.currentIndex() == 0:
             self.stackedWidget.setCurrentIndex(1)
-        path = self.fmodel.fileInfo(index).absoluteFilePath()
         self.media = self.instance.media_new(path)
         self.mediaplayer.set_media(self.media)
         self.mediaplayer.set_hwnd(int(self.player_frame.winId()))
