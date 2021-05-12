@@ -182,7 +182,7 @@ class ThumbnailThread(QThread):
 
     def run(self):
         for file in os.scandir(self.video_dir):
-            if file.name.endswith('.avi'):
+            if file.name.endswith('.mp4'):
                 thub_nail = self._generate_video_thumbnail(file)
                 self.update_widget.emit((thub_nail, file.path), self.video_dir)
 
