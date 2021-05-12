@@ -1,7 +1,7 @@
 from PyQt6.QtCore import (
     QPoint, QRect, QSize, Qt,
     pyqtSignal, QAbstractListModel,
-    QModelIndex, QTimer
+    QModelIndex, QTimer, QThread
 )
 from PyQt6.QtWidgets import (
     QFrame, QGridLayout, QHBoxLayout,
@@ -11,14 +11,16 @@ from PyQt6.QtWidgets import (
     QListView, QStackedWidget, QSlider,
     QDateEdit, QListWidget, QListWidgetItem
 )
-from random import choice
+from random import choice, randint
 from PyQt6 import QtGui, QtWidgets
 import sys
 from time import sleep
+from functools import partial
 from PyQt6.QtGui import QIcon, QPixmap, QFileSystemModel
 import os
 import vlc
-
+import tempfile
+import ffmpeg
 
 class FlowLayout(QLayout):
     """A ``QLayout`` that aranges its child widgets horizontally and
@@ -129,6 +131,62 @@ class FlowLayout(QLayout):
         return new_height
 
 
+class ThumbFrame(QLabel):
+    clicked = pyqtSignal()
+
+    def mouseDoubleClickEvent(self, a0):
+        self.clicked.emit()
+
+
+def generate_thumbnail(in_filename, out_filename):
+    
+    try:
+        probe = ffmpeg.probe(in_filename)
+        time = float(probe['streams'][0]['duration']) // 2
+        width = probe['streams'][0]['width']
+        (
+            ffmpeg
+            .input(in_filename, ss=time)
+            .filter('scale', width, -1)
+            .output(out_filename, vframes=1)
+            .overwrite_output()
+            .run(capture_stdout=True, capture_stderr=True)
+        )
+        return out_filename
+    except Exception as e:
+        pass
+
+
+def clearLayout(layout):
+    for i in reversed(range(layout.count())):
+        layout.itemAt(i).widget().deleteLater()
+
+
+class ThumbnailThread(QThread):
+    update_widget = pyqtSignal(tuple, str)
+    def __init__(self, video_dir, thumb_dir):
+        QThread.__init__(self)
+        self.video_dir = video_dir
+        self.thumb_dir = thumb_dir
+        #self.update_widget = pyqtSignal(str)
+    
+    def __del__(self):
+        self.wait()
+    
+    def _generate_video_thumbnail(self, video_file):
+        identifier = randint(1, 100000000)
+        name = f'{identifier}.png'
+        thumb_file = os.path.join(self.thumb_dir.name, name)
+        thumb_nail = generate_thumbnail(video_file, thumb_file)
+        return thumb_nail
+
+    def run(self):
+        for file in os.scandir(self.video_dir):
+            if file.name.endswith('.avi'):
+                thub_nail = self._generate_video_thumbnail(file)
+                self.update_widget.emit((thub_nail, file.path), self.video_dir)
+
+
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, directory):
         super().__init__()
@@ -155,6 +213,10 @@ class MainWindow(QtWidgets.QMainWindow):
         # create an empty vlc media player
         self.mediaplayer = self.instance.media_player_new()
         self.is_paused = False
+        # set a temporary directory
+        self.temp_dir = tempfile.TemporaryDirectory()
+        # keep track od directories
+        self.cur_dir = None
         # set the spacing
         self.body.setSpacing(0)
         # define the self.fileview pane, the bottom frame split into 2
@@ -197,21 +259,12 @@ class MainWindow(QtWidgets.QMainWindow):
         ll = QLabel()
         #ll.setPixmap(im)
         #lb.clicked.connect(self.print_path)
-        self.switch_button.clicked.connect(self.print_path)
         
-
-        # test data
-        thumb_list = ["assets/grafik 5.png", "assets/grafik 6.png", "assets/grafik 8.png", "assets/grafik 7.png", "assets/grafik 9.png"]
-        for i in thumb_list:
-            im = QPixmap(i)
-            sized_img = im.scaled(111, 111)
-            btn = QLabel("Bloom")
-            btn.setFixedSize(111, 111)
-            btn.setPixmap(sized_img)
-            self.mainframe.addWidget(btn)
         # space the thumbnails
         self.mainframe.setSpacing(10)
-        self.mainframe.addWidget(self.switch_button)
+
+        image = QPixmap("assets/grafik 5.png")
+        sized_img = image.scaled(111, 111)
 
         # screen 2 configs
         # create a frame that would be later splitted into two
@@ -488,6 +541,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.screen_frame.showFullScreen()
     
     def go_back(self):
+        if self.screen_frame.isFullScreen():
+            self.screen_frame.setLayout(self.screen_frame_layout)
+            self.page_frame.addWidget(self.screen_frame, 60)
+            self.screen_frame.showNormal()
+            return
         if self.stackedWidget.currentIndex() == 1:
             self.stackedWidget.setCurrentIndex(0)
             if self.mediaplayer.is_playing():
@@ -495,6 +553,35 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.playbutton.setIcon(self.play_icon)
                 self.is_paused = True
                 self.timer.stop()
+    
+    def play_thumbnail(self, dd):
+        if self.stackedWidget.currentIndex() == 0:
+            self.stackedWidget.setCurrentIndex(1)
+        
+        path = dd[1]
+        self.media = self.instance.media_new(path)
+        self.mediaplayer.set_media(self.media)
+        self.mediaplayer.set_hwnd(int(self.player_frame.winId()))
+        self.media.parse()
+        self.video_label.setText(f"<h1>{self.media.get_meta(0)}</h1>")
+        self.play_pause()
+
+    def update_widget(self, obj, dir):
+        if self.cur_dir != dir:
+            clearLayout(self.mainframe)
+        elif self.cur_dir == dir:
+            if not self.mainframe.isEmpty():
+                if not self.generate_thread.isRunning():
+                    return
+        self.cur_dir = dir
+        im = QPixmap(obj[0])
+        sized_img = im.scaled(111, 111, Qt.AspectRatioMode.IgnoreAspectRatio)
+        btn = ThumbFrame("Bloom")
+        btn.setAccessibleDescription(obj[1])
+        btn.clicked.connect(partial(self.play_thumbnail, obj))
+        btn.setFixedSize(111, 111)
+        btn.setPixmap(sized_img)
+        self.mainframe.addWidget(btn)
 
     def print_path(self, index):
         path = self.fmodel.fileInfo(index).absoluteFilePath()
@@ -506,6 +593,15 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.playbutton.setIcon(self.play_icon)
                     self.is_paused = True
                     self.timer.stop()
+            try:
+                if self.generate_thread.isRunning():
+                    self.generate_thread.terminate()
+            except:
+                pass
+            thumb_dir = self.temp_dir
+            self.generate_thread = ThumbnailThread(path,thumb_dir)
+            self.generate_thread.update_widget.connect(self.update_widget)
+            self.generate_thread.start()
             return
         if self.stackedWidget.currentIndex() == 0:
             self.stackedWidget.setCurrentIndex(1)
