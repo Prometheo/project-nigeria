@@ -164,6 +164,7 @@ def clearLayout(layout):
 
 class ThumbnailThread(QThread):
     update_widget = pyqtSignal(tuple, str)
+    update_list_label = pyqtSignal(tuple, str)
     def __init__(self, video_dir, thumb_dir):
         QThread.__init__(self)
         self.video_dir = video_dir
@@ -182,10 +183,34 @@ class ThumbnailThread(QThread):
 
     def run(self):
         for file in os.scandir(self.video_dir):
-            if file.name.endswith('.mp4'):
+            if file.name.endswith('.mp4' or '.avi'):
                 thub_nail = self._generate_video_thumbnail(file)
                 self.update_widget.emit((thub_nail, file.path), self.video_dir)
 
+
+class ListThumbnailThread(QThread):
+    update_list_label = pyqtSignal(tuple, str)
+    def __init__(self, video_dir, thumb_dir):
+        QThread.__init__(self)
+        self.video_dir = video_dir
+        self.thumb_dir = thumb_dir
+        #self.update_widget = pyqtSignal(str)
+    
+    def __del__(self):
+        self.wait()
+    
+    def _generate_video_thumbnail(self, video_file):
+        identifier = randint(1, 100000000)
+        name = f'{identifier}.png'
+        thumb_file = os.path.join(self.thumb_dir.name, name)
+        thumb_nail = generate_thumbnail(video_file, thumb_file)
+        return thumb_nail
+
+    def run(self):
+        for file in os.scandir(self.video_dir):
+            if file.name.endswith('.avi'):
+                thub_nail = self._generate_video_thumbnail(file)
+                self.update_list_label.emit((thub_nail, file.path), self.video_dir)
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, directory):
@@ -241,7 +266,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.rightview = QWidget()
         self.mainview = QHBoxLayout(self.bottomframe)
         self.rightview2 = QWidget()
-        self.rightview2.hide()
+        #self.rightview2.hide()
         self.mainview.setContentsMargins(0,0,0,0)
         # use the flowlayout to accomodate and self balance
         self.mainframe = FlowLayout(self.rightview)
@@ -301,19 +326,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.slider_frame.setLayout(self.slider_frame_layout)
         self.list_label = QListWidget()
         self.list_label.setFlow(QListView.Flow(0))
-        for i in range(8):
-            itm = QListWidgetItem(self.list_label)
-            btn = QLabel()
-            btn.setFixedSize(111, 111)
-            btn.setPixmap(sized_img)
-            #btn.setLayout(bxr)
-            #bxr.addWidget(btn)
-            itm.setSizeHint(btn.sizeHint())
+        # for i in range(8):
+        #     itm = QListWidgetItem(self.list_label)
+        #     btn = QLabel()
+        #     btn.setFixedSize(111, 111)
+        #     btn.setPixmap(sized_img)
+        #     #btn.setLayout(bxr)
+        #     #bxr.addWidget(btn)
+        #     itm.setSizeHint(btn.sizeHint())
         
-            self.list_label.addItem(itm)
-            self.list_label.setItemWidget(itm, btn)
+        #     self.list_label.addItem(itm)
+        #     self.list_label.setItemWidget(itm, btn)
         self.list_label.setContentsMargins(10,10,10,10)
-        self.list_label.setFixedHeight(155)
+        
 
         self.date_range_lay = QHBoxLayout()
         self.date_range = QDateEdit()
@@ -472,35 +497,33 @@ class MainWindow(QtWidgets.QMainWindow):
             height: 30;
         }
         QSlider::groove:horizontal {
-        border: 1px solid #999999;
-        height: 10px;
-
-        border-radius: 9px;
+        
+            height: 1px;
+            border-radius: 0px;
         }
 
         QSlider::handle:horizontal {
-        width: 18px;
-        background-color: white;
-        border: 1.5px solid #0078D4;
-        border-radius: 9px;
-        height: 78px;
-        margin: -5px 0;
+            width: 11px;
+            background-color: white;
+            border: 0.5px solid #0078D4;
+            border-radius: 5px;
+            margin: -5px 0;
         }
 
         QSlider::add-page:qlineargradient {
-        background: lightgrey;
-        border-top-right-radius: 9px;
-        border-bottom-right-radius: 9px;
-        border-top-left-radius: 0px;
-        border-bottom-left-radius: 0px;
+            background: lightgrey;
+            border-top-right-radius: 9px;
+            border-bottom-right-radius: 9px;
+            border-top-left-radius: 0px;
+            border-bottom-left-radius: 0px;
         }
 
         QSlider::sub-page:qlineargradient {
-        background: #0078D4;
-        border-top-right-radius: 0px;
-        border-bottom-right-radius: 0px;
-        border-top-left-radius: 9px;
-        border-bottom-left-radius: 9px;
+            background: #0078D4;
+            border-top-right-radius: 0px;
+            border-bottom-right-radius: 0px;
+            border-top-left-radius: 9px;
+            border-bottom-left-radius: 9px;
         }
         """)
     
@@ -534,10 +557,46 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.screen_frame.isFullScreen():
             self.screen_frame.setLayout(self.screen_frame_layout)
             self.page_frame.addWidget(self.screen_frame, 60)
+            self.page_frame.addWidget(self.slider_frame, 40)
             #self.df.setParent(self.deet2)
             self.screen_frame.showNormal()
         else:
             self.screen_frame.setParent(None)
+            self.screen_frame.setStyleSheet(
+                '''
+                #playb {
+                    border: None;
+                }
+                QSlider::groove:horizontal {
+        
+                height: 1px;
+                border-radius: 0px;
+                }
+
+                QSlider::handle:horizontal {
+                    width: 11px;
+                    background-color: white;
+                    border: 0.5px solid #0078D4;
+                    border-radius: 5px;
+                    margin: -5px 0;
+                }
+
+                QSlider::add-page:qlineargradient {
+                    background: lightgrey;
+                    border-top-right-radius: 9px;
+                    border-bottom-right-radius: 9px;
+                    border-top-left-radius: 0px;
+                    border-bottom-left-radius: 0px;
+                }
+
+                QSlider::sub-page:qlineargradient {
+                    background: #0078D4;
+                    border-top-right-radius: 0px;
+                    border-bottom-right-radius: 0px;
+                    border-top-left-radius: 9px;
+                    border-bottom-left-radius: 9px;
+                }'''
+            )
             self.screen_frame.showFullScreen()
     
     def go_back(self):
@@ -565,6 +624,38 @@ class MainWindow(QtWidgets.QMainWindow):
         self.media.parse()
         self.video_label.setText(f"<h1>{self.media.get_meta(0)}</h1>")
         self.play_pause()
+    
+    def update_list_label(self, obj, dir):
+        if self.cur_dir != dir:
+            self.list_label.clear()
+        elif self.cur_dir == dir:
+            if not self.mainframe.isEmpty():
+                if not self.generate_thread.isRunning():
+                    return
+        self.cur_dir = dir
+        im = QPixmap(obj[0])
+        sized_img = im.scaled(111, 111, Qt.AspectRatioMode.IgnoreAspectRatio)
+        itm = QListWidgetItem(self.list_label)
+        btn = ThumbFrame("Bloom")
+        btn.setAccessibleDescription(obj[1])
+        btn.clicked.connect(partial(self.play_thumbnail, obj))
+        btn.setFixedSize(111, 111)
+        btn.setPixmap(sized_img)
+        itm.setSizeHint(btn.sizeHint())
+        self.list_label.addItem(itm)
+        self.list_label.setItemWidget(itm, btn)
+        self.list_label.setFixedHeight(btn.height())
+        # for i in range(8):
+        #     itm = QListWidgetItem(self.list_label)
+        #     btn = QLabel()
+        #     btn.setFixedSize(111, 111)
+        #     btn.setPixmap(sized_img)
+        #     #btn.setLayout(bxr)
+        #     #bxr.addWidget(btn)
+        #     itm.setSizeHint(btn.sizeHint())
+        
+        #     self.list_label.addItem(itm)
+        #     self.list_label.setItemWidget(itm, btn)
 
     def update_widget(self, obj, dir):
         if self.cur_dir != dir:
@@ -611,6 +702,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.media.parse()
         self.video_label.setText(f"<h1>{self.media.get_meta(0)}</h1>")
         self.play_pause()
+        try:
+            if self.generate_thread.isRunning():
+                self.generate_thread.terminate()
+        except:
+            pass
+        thumb_dir = self.temp_dir
+        path_folder = os.path.dirname(path)
+        self.generate_thread = ListThumbnailThread(path_folder,thumb_dir)
+        self.generate_thread.update_list_label.connect(self.update_list_label)
+        self.generate_thread.start()
     
     def rewind(self):
         self.timer.stop()
