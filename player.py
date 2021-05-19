@@ -1,7 +1,7 @@
 from PyQt6.QtCore import (
     QPoint, QRect, QSize, Qt,
     pyqtSignal, QAbstractListModel,
-    QModelIndex, QTimer, QThread
+    QModelIndex, QTimer, QThread,
 )
 from PyQt6.QtWidgets import (
     QFrame, QGridLayout, QHBoxLayout,
@@ -9,14 +9,18 @@ from PyQt6.QtWidgets import (
     QSpacerItem, QVBoxLayout, QWidget,
     QTreeView, QLineEdit,
     QListView, QStackedWidget, QSlider,
-    QDateEdit, QListWidget, QListWidgetItem
+    QDateEdit, QListWidget, QListWidgetItem,
+    QToolBar
 )
 from random import choice, randint
 from PyQt6 import QtGui, QtWidgets
 import sys
 from time import sleep
 from functools import partial
-from PyQt6.QtGui import QIcon, QPixmap, QFileSystemModel
+from PyQt6.QtGui import (
+    QIcon, QPixmap, QFileSystemModel,
+    QAction
+)
 import os
 import vlc
 import tempfile
@@ -213,18 +217,33 @@ class ListThumbnailThread(QThread):
                 self.update_list_label.emit((thub_nail, file.path), self.video_dir)
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, directory):
+    def __init__(self):
         super().__init__()
         self.setWindowTitle('Remote CAM Controller')
         self.setGeometry(0, 0, 900, 900)
-        self.set_ui(directory)
+        self.set_ui()
 
-    def set_ui(self, directory):
+    def set_ui(self):
         self.widget = QtWidgets.QWidget(self)
         # self.body of the screen
         self.body = QVBoxLayout()
         # main area
         self.bottomframe = QFrame()
+        toolbar = QToolBar("&Folder Selector")
+        toolbar.setIconSize(QSize(16, 16))
+        #self.addToolBar(toolbar)
+
+        select_folder_action = QAction(QIcon("assets\\folder.png"), "Select Folder", self)
+        select_folder_action.setStatusTip("This is your button")
+        select_folder_action.triggered.connect(self.onMyToolBarButtonClick)
+        about_action = QAction(QIcon("assets\\help.png"), "About", self)
+        info_action = QAction(QIcon("assets\\info.png"), "How To", self)
+        #toolbar.addAction(select_folder_action)
+        menu = self.menuBar()
+        file_menu = menu.addMenu("&File")
+        help_menu = menu.addMenu("&Help")
+        file_menu.addAction(select_folder_action)
+        help_menu.addActions([about_action, info_action])
         # top area(little space)
         self.topframe = QFrame()
         self.bottomframe.setObjectName('mvue')
@@ -246,10 +265,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.body.setSpacing(0)
         # define the self.fileview pane, the bottom frame split into 2
         self.fmodel = QFileSystemModel()
-        self.fmodel.setRootPath(directory)
+        #self.fmodel.setRootPath('')
         self.fileview = QTreeView()
         self.fileview.setModel(self.fmodel)
-        self.fileview.setRootIndex(self.fmodel.index(directory))
         self.fileview.setColumnWidth(0, 200)
         self.fileview.setAnimated(True)
         self.fileview.clicked.connect(self.print_path)
@@ -598,7 +616,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 }'''
             )
             self.screen_frame.showFullScreen()
-    
+    def onMyToolBarButtonClick(self):
+        dialog = QtWidgets.QFileDialog()
+        folder_path = dialog.getExistingDirectory(None, 'select the content Folder')
+        print(folder_path)
+        self.fmodel.setRootPath(folder_path)
+        self.fileview.setRootIndex(self.fmodel.index(folder_path))
+        for col in range(1, self.fmodel.columnCount()):
+            self.fileview.hideColumn(col)
+
     def go_back(self):
         if self.screen_frame.isFullScreen():
             self.screen_frame.setLayout(self.screen_frame_layout)
@@ -761,6 +787,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication([])
-    window = MainWindow("D:\\white collar")
+    window = MainWindow()
     window.show()
     sys.exit(app.exec())
