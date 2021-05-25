@@ -135,6 +135,20 @@ class FlowLayout(QLayout):
         return new_height
 
 
+class Slider(QtWidgets.QSlider):
+    # seek = pyqtSignal()
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButtons.LeftButton:
+            e.accept()
+            x = e.position().x()
+            value = (self.maximum() - self.minimum()) * x / self.width() + self.minimum()
+            self.setValue(int(value))
+            self.sliderMoved.emit(int(value))
+            #self.seek.emit()
+        else:
+            return super().mousePressEvent(self, e)
+
+
 class ThumbFrame(QLabel):
     clicked = pyqtSignal()
 
@@ -165,6 +179,15 @@ def clearLayout(layout):
     for i in reversed(range(layout.count())):
         layout.itemAt(i).widget().deleteLater()
 
+def generate_media_list(directory: str, cur_media: str):
+    medias = [os.path.abspath(file) for file in os.scandir(directory) if file.name.endswith('.mp4')]
+    try:
+        media_index = medias.index(os.path.abspath(cur_media))
+        media_list = medias[media_index+1:]
+    except ValueError:
+        media_list = medias
+    for file in media_list:
+        yield file
 
 class ThumbnailThread(QThread):
     update_widget = pyqtSignal(tuple, str)
@@ -187,7 +210,7 @@ class ThumbnailThread(QThread):
 
     def run(self):
         for file in os.scandir(self.video_dir):
-            if file.name.endswith('.mp4' or '.avi'):
+            if file.name.endswith('.mp4'):
                 thub_nail = self._generate_video_thumbnail(file)
                 self.update_widget.emit((thub_nail, file.path), self.video_dir)
 
@@ -212,7 +235,7 @@ class ListThumbnailThread(QThread):
 
     def run(self):
         for file in os.scandir(self.video_dir):
-            if file.name.endswith('.avi'):
+            if file.name.endswith('.mp4'):
                 thub_nail = self._generate_video_thumbnail(file)
                 self.update_list_label.emit((thub_nail, file.path), self.video_dir)
 
@@ -256,6 +279,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.media = None
         # create an empty vlc media player
         self.mediaplayer = self.instance.media_player_new()
+        # self.media_list = []
         self.is_paused = False
         # set a temporary directory
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -373,10 +397,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.label_btn.addStretch()
         self.label_btn.addWidget(self.video_label)
         self.label_btn.addStretch()
-        self.positionSlider = QSlider(Qt.Orientations.Horizontal)
+        self.positionSlider = Slider(Qt.Orientations.Horizontal)
         self.positionSlider.setMaximum(1000)
         self.positionSlider.sliderMoved.connect(self.set_position)
-        self.positionSlider.sliderPressed.connect(self.set_position)
+        # self.positionSlider.sliderPressed.connect(self.set_position)
+        #self.positionSlider.seek.connect(self.set_position)
         #self.positionSlider.setFocusPolicy(Qt.NoFocus)
         self.hbuttonbox = QHBoxLayout()
         self.speakerbutton = QPushButton()
@@ -410,8 +435,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.enlargebutton.setIcon(self.enlarge_icon)
         self.menubutton.setIcon(self.menu_icon)
         self.hbuttonbox.addWidget(self.speakerbutton)
-        self.hbuttonbox.addWidget(self.chatbutton)
-        self.hbuttonbox.addWidget(self.messagebutton)
+        # self.hbuttonbox.addWidget(self.chatbutton)
+        # self.hbuttonbox.addWidget(self.messagebutton)
         
         self.hbuttonbox.addStretch()
         self.hbuttonbox.addWidget(self.rwdbutton)
@@ -550,6 +575,7 @@ class MainWindow(QtWidgets.QMainWindow):
         Toggle play/pause status
         """
         
+        
         if self.mediaplayer.is_playing():
             self.mediaplayer.pause()
             self.playbutton.setIcon(self.play_icon)
@@ -560,6 +586,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.mediaplayer.play()
             sleep(0.5)
             self.playbutton.setIcon(self.pause_icon)
+            self.is_paused = False
             self.timer.start()
     
     def set_mute_status(self):
@@ -619,7 +646,6 @@ class MainWindow(QtWidgets.QMainWindow):
     def onMyToolBarButtonClick(self):
         dialog = QtWidgets.QFileDialog()
         folder_path = dialog.getExistingDirectory(None, 'select the content Folder')
-        print(folder_path)
         self.fmodel.setRootPath(folder_path)
         self.fileview.setRootIndex(self.fmodel.index(folder_path))
         for col in range(1, self.fmodel.columnCount()):
@@ -644,6 +670,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.stackedWidget.setCurrentIndex(1)
         
         path = dd[1]
+        path_folder = os.path.dirname(path)
+        self.media_list = generate_media_list(path_folder, path)
         self.media = self.instance.media_new(path)
         self.mediaplayer.set_media(self.media)
         self.mediaplayer.set_hwnd(int(self.player_frame.winId()))
@@ -722,6 +750,9 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         if self.stackedWidget.currentIndex() == 0:
             self.stackedWidget.setCurrentIndex(1)
+        
+        path_folder = os.path.dirname(path)
+        self.media_list = generate_media_list(path_folder, path)
         self.media = self.instance.media_new(path)
         self.mediaplayer.set_media(self.media)
         self.mediaplayer.set_hwnd(int(self.player_frame.winId()))
@@ -734,7 +765,7 @@ class MainWindow(QtWidgets.QMainWindow):
         except:
             pass
         thumb_dir = self.temp_dir
-        path_folder = os.path.dirname(path)
+        
         self.generate_thread = ListThumbnailThread(path_folder,thumb_dir)
         self.generate_thread.update_list_label.connect(self.update_list_label)
         self.generate_thread.start()
@@ -761,8 +792,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Set the media position to where the slider was dragged
         self.timer.stop()
+        self.mediaplayer.pause()
         pos = self.positionSlider.value()
         self.mediaplayer.set_position(pos / 1000.0)
+        sleep(0.5)
+        self.mediaplayer.play()
         self.timer.start()
     
     def stop(self):
@@ -773,16 +807,28 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
     def update_ui(self):
+        
         media_pos = int(self.mediaplayer.get_position() * 1000)
         self.positionSlider.setValue(media_pos)
         if not self.mediaplayer.is_playing():
-            self.timer.stop()
+            #self.timer.stop()
 
             # After the video finished, the play button stills shows "Pause",
             # which is not the desired behavior of a media player.
             # This fixes that "bug".
             if not self.is_paused:
-                self.stop()
+                # print('tt', self.media_list.__next__())
+                # self.stop()
+                try:
+                    
+                    self.media = self.instance.media_new(self.media_list.__next__())
+                    self.mediaplayer.set_media(self.media)
+                    self.mediaplayer.set_hwnd(int(self.player_frame.winId()))
+                    self.media.parse()
+                    self.video_label.setText(f"<h1>{self.media.get_meta(0)}</h1>")
+                    self.play_pause()
+                except StopIteration:
+                    self.stop()
 
 
 if __name__ == '__main__':
