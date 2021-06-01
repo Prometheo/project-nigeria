@@ -1,7 +1,7 @@
 from PyQt6.QtCore import (
     QPoint, QRect, QSize, Qt,
     pyqtSignal, QAbstractListModel,
-    QModelIndex, QTimer, QThread,
+    QModelIndex, QTimer, QThread, QDir, QRect
 )
 from PyQt6.QtWidgets import (
     QFrame, QGridLayout, QHBoxLayout,
@@ -179,18 +179,20 @@ def clearLayout(layout):
     for i in reversed(range(layout.count())):
         layout.itemAt(i).widget().deleteLater()
 
-def generate_media_list(directory: str, cur_media: str):
-    medias = [os.path.abspath(file) for file in os.scandir(directory) if file.name.endswith('.mp4')]
-    try:
-        media_index = medias.index(os.path.abspath(cur_media))
-        media_list = medias[media_index+1:]
-    except ValueError:
-        media_list = medias
+def generate_media_list(directory: str, cur_media=None):
+    media_list = sorted([file.path for file in os.scandir(directory)], key=os.path.getctime, reverse=True)
+    if cur_media:
+        try:
+            media_index = media_list.index(cur_media)
+            media_list = media_list[media_index+1:]
+        except ValueError:
+            pass
     for file in media_list:
         yield file
 
+
 class ThumbnailThread(QThread):
-    update_widget = pyqtSignal(tuple, str)
+    update_widget = pyqtSignal(tuple, str, int)
     update_list_label = pyqtSignal(tuple, str)
     def __init__(self, video_dir, thumb_dir):
         QThread.__init__(self)
@@ -209,14 +211,18 @@ class ThumbnailThread(QThread):
         return thumb_nail
 
     def run(self):
+        folderz = list(os.scandir(self.video_dir))
         for file in os.scandir(self.video_dir):
-            if file.name.endswith('.mp4'):
-                thub_nail = self._generate_video_thumbnail(file)
-                self.update_widget.emit((thub_nail, file.path), self.video_dir)
+            sorted_videos = sorted(os.scandir(file), key=os.path.getctime, reverse=True)
+            try:
+                thub_nail = self._generate_video_thumbnail(sorted_videos[0])
+            except IndexError:
+                thub_nail = ''
+            self.update_widget.emit((thub_nail, file.path), self.video_dir, len(folderz))
 
 
 class ListThumbnailThread(QThread):
-    update_list_label = pyqtSignal(tuple, str)
+    update_list_label = pyqtSignal(tuple, str, int)
     def __init__(self, video_dir, thumb_dir):
         QThread.__init__(self)
         self.video_dir = video_dir
@@ -234,10 +240,37 @@ class ListThumbnailThread(QThread):
         return thumb_nail
 
     def run(self):
-        for file in os.scandir(self.video_dir):
-            if file.name.endswith('.mp4'):
+        videoz = list(os.scandir(self.video_dir))
+        for file in sorted(os.scandir(self.video_dir), key=os.path.getctime, reverse=True):
                 thub_nail = self._generate_video_thumbnail(file)
-                self.update_list_label.emit((thub_nail, file.path), self.video_dir)
+                self.update_list_label.emit((thub_nail, file.path), self.video_dir, len(videoz))
+
+
+file_model = QFileSystemModel()
+
+class MyTreeView(QTreeView):
+    #expanded = pyqtSignal()
+    def __init__(self):
+        super().__init__()
+        self.setExpandsOnDoubleClick(False)
+        #self.expanded.connect(self.rexpand)
+
+    def mousePressEvent(self, e):
+        pos = e.position()
+        clickedIndex = self.indexAt(pos.toPoint())
+        if clickedIndex.isValid():
+            vrect = self.visualRect(clickedIndex)
+            itemIdentation = vrect.x() - self.visualRect(self.rootIndex()).x()
+            if e.position().x() < itemIdentation:
+                path = file_model.fileInfo(clickedIndex).absoluteFilePath()
+                if not list(os.walk(path))[0][2]:
+                    if not self.isExpanded(clickedIndex):
+                        self.expand(clickedIndex)
+                    else:
+                        self.collapse(clickedIndex)
+                return
+            return super().mousePressEvent(e)
+
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
@@ -279,6 +312,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.media = None
         # create an empty vlc media player
         self.mediaplayer = self.instance.media_player_new()
+        #self.media_list = vlc.MediaList()
         # self.media_list = []
         self.is_paused = False
         # set a temporary directory
@@ -288,10 +322,11 @@ class MainWindow(QtWidgets.QMainWindow):
         # set the spacing
         self.body.setSpacing(0)
         # define the self.fileview pane, the bottom frame split into 2
-        self.fmodel = QFileSystemModel()
-        #self.fmodel.setRootPath('')
-        self.fileview = QTreeView()
-        self.fileview.setModel(self.fmodel)
+        #file_model = QFileSystemModel()
+        #file_model.setFilter(QDir.Dirs|QDir.NoDotAndDotDot)
+        #file_model.setRootPath('')
+        self.fileview = MyTreeView()
+        self.fileview.setModel(file_model)
         self.fileview.setColumnWidth(0, 200)
         self.fileview.setAnimated(True)
         self.fileview.clicked.connect(self.print_path)
@@ -499,13 +534,17 @@ class MainWindow(QtWidgets.QMainWindow):
             width: 40px;
         }
         #mainframe {
-           
+           border: 5px solid #000000;
+        }
+        #plate::hover {
+            border: 3px solid #000000;
+            
         }
         #rightview {
             border: None;
         }
         #search_box {
-            background-color: #E5E5E5;
+            background-color: white;
         }
         #mini {
             margin: 0px;
@@ -646,9 +685,10 @@ class MainWindow(QtWidgets.QMainWindow):
     def onMyToolBarButtonClick(self):
         dialog = QtWidgets.QFileDialog()
         folder_path = dialog.getExistingDirectory(None, 'select the content Folder')
-        self.fmodel.setRootPath(folder_path)
-        self.fileview.setRootIndex(self.fmodel.index(folder_path))
-        for col in range(1, self.fmodel.columnCount()):
+        file_model.setRootPath(folder_path)
+
+        self.fileview.setRootIndex(file_model.index(folder_path))
+        for col in range(1, file_model.columnCount()):
             self.fileview.hideColumn(col)
 
     def go_back(self):
@@ -660,9 +700,10 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.stackedWidget.currentIndex() == 1:
             self.stackedWidget.setCurrentIndex(0)
             if self.mediaplayer.is_playing():
-                self.mediaplayer.pause()
+                self.mediaplayer.stop()
                 self.playbutton.setIcon(self.play_icon)
-                self.is_paused = True
+                #self.is_paused = True
+                self.positionSlider.setValue(0)
                 self.timer.stop()
     
     def play_thumbnail(self, dd):
@@ -670,32 +711,87 @@ class MainWindow(QtWidgets.QMainWindow):
             self.stackedWidget.setCurrentIndex(1)
         
         path = dd[1]
+        cam_label = dd[1].split('\\')
+        #path_folder = os.path.dirname(path)
+        
+        self.media_list = generate_media_list(path)
+        # for video in os.scandir(path):
+        #     print(video)
+        #     self.media_list.add_media(self.instance.media_new(video))
+        
+        #self.mediaplayer.set_media_list(self.media_list)
+        #m_inst = self.mediaplayer.get_media_player()
+        try:
+            self.media = self.instance.media_new(self.media_list.__next__())
+        except StopIteration:
+            return
+        self.mediaplayer.set_media(self.media)
+        self.mediaplayer.set_hwnd(int(self.player_frame.winId()))
+        self.media.parse()
+        self.video_label.setText(f"<h1>{cam_label[-1]}</h1>")
+        try:
+            if self.generate_thread.isRunning():
+                self.generate_thread.terminate()
+        except:
+            pass
+        thumb_dir = self.temp_dir
         path_folder = os.path.dirname(path)
+        self.generate_thread = ListThumbnailThread(path,thumb_dir)
+        self.generate_thread.update_list_label.connect(self.update_list_label)
+        self.generate_thread.start()
+
+    def play_list_thumbnail(self, dd):
+        if self.stackedWidget.currentIndex() == 0:
+            self.stackedWidget.setCurrentIndex(1)
+        
+        path = dd[1]
+        cam_label = dd[1].split('\\')
+        path_folder = os.path.dirname(path)
+        
         self.media_list = generate_media_list(path_folder, path)
+        # for video in os.scandir(path):
+        #     print(video)
+        #     self.media_list.add_media(self.instance.media_new(video))
+        
+        #self.mediaplayer.set_media_list(self.media_list)
+        #m_inst = self.mediaplayer.get_media_player()
         self.media = self.instance.media_new(path)
         self.mediaplayer.set_media(self.media)
         self.mediaplayer.set_hwnd(int(self.player_frame.winId()))
         self.media.parse()
-        self.video_label.setText(f"<h1>{self.media.get_meta(0)}</h1>")
-        self.play_pause()
-    
-    def update_list_label(self, obj, dir):
+        # self.video_label.setText(f"<h1>{cam_label[-1]}</h1>")
+        # try:
+        #     if self.generate_thread.isRunning():
+        #         self.generate_thread.terminate()
+        # except:
+        #     pass
+        # thumb_dir = self.temp_dir
+        # path_folder = os.path.dirname(path)
+        # self.generate_thread = ListThumbnailThread(path,thumb_dir)
+        # self.generate_thread.update_list_label.connect(self.update_list_label)
+        # self.generate_thread.start()
+
+    def update_list_label(self, obj, dir, length):
         if self.cur_dir != dir:
             self.list_label.clear()
         elif self.cur_dir == dir:
-            if not self.mainframe.isEmpty():
-                if not self.generate_thread.isRunning():
-                    return
+            if self.list_label.count() == length:
+                return
         self.cur_dir = dir
         im = QPixmap(obj[0])
         sized_img = im.scaled(111, 111, Qt.AspectRatioMode.IgnoreAspectRatio)
         itm = QListWidgetItem(self.list_label)
         btn = ThumbFrame("Bloom")
         btn.setAccessibleDescription(obj[1])
-        btn.clicked.connect(partial(self.play_thumbnail, obj))
+        btn.clicked.connect(partial(self.play_list_thumbnail, obj))
         btn.setFixedSize(111, 111)
         btn.setPixmap(sized_img)
         itm.setSizeHint(btn.sizeHint())
+        wrapper_layout = QVBoxLayout()
+        wrapper_widget = QWidget()
+        wrapper_layout.addWidget(btn)
+        wrapper_widget.setLayout(wrapper_layout)
+        wrapper_widget.setObjectName('plate')
         self.list_label.addItem(itm)
         self.list_label.setItemWidget(itm, btn)
         self.list_label.setFixedHeight(btn.height())
@@ -711,13 +807,12 @@ class MainWindow(QtWidgets.QMainWindow):
         #     self.list_label.addItem(itm)
         #     self.list_label.setItemWidget(itm, btn)
 
-    def update_widget(self, obj, dir):
+    def update_widget(self, obj, dir, length):
         if self.cur_dir != dir:
             clearLayout(self.mainframe)
         elif self.cur_dir == dir:
-            if not self.mainframe.isEmpty():
-                if not self.generate_thread.isRunning():
-                    return
+            if self.mainframe.count() == length:
+                return
         self.cur_dir = dir
         im = QPixmap(obj[0])
         sized_img = im.scaled(111, 111, Qt.AspectRatioMode.IgnoreAspectRatio)
@@ -726,10 +821,29 @@ class MainWindow(QtWidgets.QMainWindow):
         btn.clicked.connect(partial(self.play_thumbnail, obj))
         btn.setFixedSize(111, 111)
         btn.setPixmap(sized_img)
-        self.mainframe.addWidget(btn)
+        # btn.setStyleSheet("::hover"
+        #                     "{"
+        #                     "border : 5px solid green;"
+        #                     "}")
+        cam_label = obj[1].split('\\')
+        #print(cam_label)
+        label = QLabel(cam_label[-1])
+        wrapper_layout = QVBoxLayout()
+        wrapper_widget = QWidget()
+        wrapper_layout.addWidget(btn, 70, Qt.Alignment.AlignCenter)
+        wrapper_layout.addWidget(label, 30, Qt.Alignment.AlignCenter)
+        wrapper_widget.setLayout(wrapper_layout)
+        wrapper_widget.setObjectName('plate')
+        self.mainframe.addWidget(wrapper_widget)
+    
+    def block_thread_signal(self):
+        self.fileview.blockSignals(True)
+    
+    def release_thread_signal(self):
+        self.fileview.blockSignals(False)
 
     def print_path(self, index):
-        path = self.fmodel.fileInfo(index).absoluteFilePath()
+        path = file_model.fileInfo(index).absoluteFilePath()
         if os.path.isdir(path):
             if self.stackedWidget.currentIndex() == 1:
                 self.stackedWidget.setCurrentIndex(0)
@@ -744,9 +858,13 @@ class MainWindow(QtWidgets.QMainWindow):
             except:
                 pass
             thumb_dir = self.temp_dir
-            self.generate_thread = ThumbnailThread(path,thumb_dir)
-            self.generate_thread.update_widget.connect(self.update_widget)
-            self.generate_thread.start()
+            if list(os.walk(path))[0][1]:
+                self.generate_thread = ThumbnailThread(path,thumb_dir)
+                self.generate_thread.update_widget.connect(self.update_widget)
+                self.generate_thread.started.connect(self.block_thread_signal)
+                self.generate_thread.finished.connect(self.release_thread_signal)
+                self.generate_thread.start()
+                
             return
         if self.stackedWidget.currentIndex() == 0:
             self.stackedWidget.setCurrentIndex(1)
@@ -807,7 +925,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
     def update_ui(self):
-        
         media_pos = int(self.mediaplayer.get_position() * 1000)
         self.positionSlider.setValue(media_pos)
         if not self.mediaplayer.is_playing():
@@ -817,15 +934,12 @@ class MainWindow(QtWidgets.QMainWindow):
             # which is not the desired behavior of a media player.
             # This fixes that "bug".
             if not self.is_paused:
-                # print('tt', self.media_list.__next__())
-                # self.stop()
                 try:
-                    
                     self.media = self.instance.media_new(self.media_list.__next__())
                     self.mediaplayer.set_media(self.media)
                     self.mediaplayer.set_hwnd(int(self.player_frame.winId()))
                     self.media.parse()
-                    self.video_label.setText(f"<h1>{self.media.get_meta(0)}</h1>")
+                    #self.video_label.setText(f"<h1>{self.media.get_meta(0)}</h1>")
                     self.play_pause()
                 except StopIteration:
                     self.stop()
