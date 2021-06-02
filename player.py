@@ -157,9 +157,8 @@ class ThumbFrame(QLabel):
 
 
 def generate_thumbnail(in_filename, out_filename):
-    
     try:
-        probe = ffmpeg.probe(in_filename)
+        probe = ffmpeg.probe(in_filename.path)
         time = float(probe['streams'][0]['duration']) // 2
         width = probe['streams'][0]['width']
         (
@@ -287,14 +286,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.bottomframe = QFrame()
         toolbar = QToolBar("&Folder Selector")
         toolbar.setIconSize(QSize(16, 16))
-        #self.addToolBar(toolbar)
+        self.addToolBar(toolbar)
 
         select_folder_action = QAction(QIcon("assets\\folder.png"), "Select Folder", self)
         select_folder_action.setStatusTip("This is your button")
         select_folder_action.triggered.connect(self.onMyToolBarButtonClick)
         about_action = QAction(QIcon("assets\\help.png"), "About", self)
         info_action = QAction(QIcon("assets\\info.png"), "How To", self)
-        #toolbar.addAction(select_folder_action)
+        toolbar.addAction(select_folder_action)
         menu = self.menuBar()
         file_menu = menu.addMenu("&File")
         help_menu = menu.addMenu("&Help")
@@ -329,7 +328,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fileview.setModel(file_model)
         self.fileview.setColumnWidth(0, 200)
         self.fileview.setAnimated(True)
+        self.fileview.setHeaderHidden(True)
         self.fileview.clicked.connect(self.print_path)
+
         # file search bar
         self.wrapperwig = QFrame()
         self.twobx = QVBoxLayout(self.wrapperwig)
@@ -688,8 +689,9 @@ class MainWindow(QtWidgets.QMainWindow):
         file_model.setRootPath(folder_path)
 
         self.fileview.setRootIndex(file_model.index(folder_path))
-        for col in range(1, file_model.columnCount()):
-            self.fileview.hideColumn(col)
+        # for col in range(1, file_model.columnCount()):
+        #     self.fileview.hideColumn(col)
+        
 
     def go_back(self):
         if self.screen_frame.isFullScreen():
