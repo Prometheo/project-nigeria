@@ -178,12 +178,15 @@ def clearLayout(layout):
     for i in reversed(range(layout.count())):
         layout.itemAt(i).widget().deleteLater()
 
-def generate_media_list(directory: str, cur_media=None):
+def generate_media_list(directory: str, cur_media=None, include=False):
     media_list = sorted([file.path for file in os.scandir(directory)], key=os.path.getctime, reverse=True)
     if cur_media:
         try:
             media_index = media_list.index(cur_media)
-            media_list = media_list[media_index+1:]
+            if include:
+                media_list = media_list[media_index:]
+            else:
+                media_list = media_list[media_index+1:]
         except ValueError:
             pass
     for file in media_list:
@@ -723,6 +726,7 @@ class MainWindow(QtWidgets.QMainWindow):
         
         #self.mediaplayer.set_media_list(self.media_list)
         #m_inst = self.mediaplayer.get_media_player()
+        print(dd[1])
         try:
             self.media = self.instance.media_new(self.media_list.__next__())
         except StopIteration:
@@ -750,7 +754,7 @@ class MainWindow(QtWidgets.QMainWindow):
         cam_label = dd[1].split('\\')
         path_folder = os.path.dirname(path)
         
-        self.media_list = generate_media_list(path_folder, path)
+        self.media_list = generate_media_list(path_folder, path, include=True)
         # for video in os.scandir(path):
         #     print(video)
         #     self.media_list.add_media(self.instance.media_new(video))
@@ -871,24 +875,24 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.stackedWidget.currentIndex() == 0:
             self.stackedWidget.setCurrentIndex(1)
         
-        path_folder = os.path.dirname(path)
-        self.media_list = generate_media_list(path_folder, path)
-        self.media = self.instance.media_new(path)
-        self.mediaplayer.set_media(self.media)
-        self.mediaplayer.set_hwnd(int(self.player_frame.winId()))
-        self.media.parse()
-        self.video_label.setText(f"<h1>{self.media.get_meta(0)}</h1>")
-        self.play_pause()
-        try:
-            if self.generate_thread.isRunning():
-                self.generate_thread.terminate()
-        except:
-            pass
-        thumb_dir = self.temp_dir
+        # path_folder = os.path.dirname(path)
+        # self.media_list = generate_media_list(path_folder, path)
+        # self.media = self.instance.media_new(path)
+        # self.mediaplayer.set_media(self.media)
+        # self.mediaplayer.set_hwnd(int(self.player_frame.winId()))
+        # self.media.parse()
+        # self.video_label.setText(f"<h1>{self.media.get_meta(0)}</h1>")
+        # self.play_pause()
+        # try:
+        #     if self.generate_thread.isRunning():
+        #         self.generate_thread.terminate()
+        # except:
+        #     pass
+        # thumb_dir = self.temp_dir
         
-        self.generate_thread = ListThumbnailThread(path_folder,thumb_dir)
-        self.generate_thread.update_list_label.connect(self.update_list_label)
-        self.generate_thread.start()
+        # self.generate_thread = ListThumbnailThread(path_folder,thumb_dir)
+        # self.generate_thread.update_list_label.connect(self.update_list_label)
+        # self.generate_thread.start()
     
     def rewind(self):
         self.timer.stop()
