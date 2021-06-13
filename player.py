@@ -327,7 +327,8 @@ class MainWindow(QtWidgets.QMainWindow):
         #file_model = QFileSystemModel()
         #file_model.setFilter(QDir.Dirs|QDir.NoDotAndDotDot)
         #file_model.setRootPath('')
-        self.fileview = MyTreeView()
+        self.fileview = QTreeView()
+        
         self.fileview.setModel(file_model)
         self.fileview.setColumnWidth(0, 200)
         self.fileview.setAnimated(True)
@@ -690,6 +691,7 @@ class MainWindow(QtWidgets.QMainWindow):
         dialog = QtWidgets.QFileDialog()
         folder_path = dialog.getExistingDirectory(None, 'select the content Folder')
         file_model.setRootPath(folder_path)
+        file_model.setFilter(QDir.Filters.AllDirs|QDir.Filters.NoDotAndDotDot)
 
         self.fileview.setRootIndex(file_model.index(folder_path))
         # for col in range(1, file_model.columnCount()):
@@ -922,7 +924,7 @@ class MainWindow(QtWidgets.QMainWindow):
         sleep(0.5)
         self.mediaplayer.play()
         self.timer.start()
-    
+
     def stop(self):
         """Stop player
         """
