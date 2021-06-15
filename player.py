@@ -215,12 +215,13 @@ class ThumbnailThread(QThread):
     def run(self):
         folderz = list(os.scandir(self.video_dir))
         for file in os.scandir(self.video_dir):
-            sorted_videos = sorted(os.scandir(file), key=os.path.getctime, reverse=True)
-            try:
-                thub_nail = self._generate_video_thumbnail(sorted_videos[0])
-            except IndexError:
-                thub_nail = ''
-            self.update_widget.emit((thub_nail, file.path), self.video_dir, len(folderz))
+            if os.path.isdir(file):
+                sorted_videos = sorted(os.scandir(file), key=os.path.getctime, reverse=True)
+                try:
+                    thub_nail = self._generate_video_thumbnail(sorted_videos[0])
+                except IndexError:
+                    thub_nail = ''
+                self.update_widget.emit((thub_nail, file.path), self.video_dir, len(folderz))
 
 
 class ListThumbnailThread(QThread):
