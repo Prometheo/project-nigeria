@@ -213,15 +213,23 @@ class ThumbnailThread(QThread):
         return thumb_nail
 
     def run(self):
-        folderz = list(os.scandir(self.video_dir))
+        folderz = len(list(os.scandir(self.video_dir)))
+        vids = [vid for vid in os.scandir(self.video_dir) if os.path.isfile(vid) ]
+        if vids:
+            try:
+                thub_nail = self._generate_video_thumbnail(vids[0])
+                self.update_widget.emit((thub_nail, os.path.normcase(self.video_dir)), self.video_dir, folderz)
+            except IndexError:
+                pass
         for file in os.scandir(self.video_dir):
             if os.path.isdir(file):
                 sorted_videos = sorted(os.scandir(file), key=os.path.getctime, reverse=True)
                 try:
                     thub_nail = self._generate_video_thumbnail(sorted_videos[0])
+                    self.update_widget.emit((thub_nail, os.path.normpath(file.path)), self.video_dir, folderz)
                 except IndexError:
-                    thub_nail = ''
-                self.update_widget.emit((thub_nail, file.path), self.video_dir, len(folderz))
+                    self.update_widget.emit((None, os.path.normpath(file.path)), self.video_dir, folderz)
+
 
 
 class ListThumbnailThread(QThread):
@@ -243,13 +251,22 @@ class ListThumbnailThread(QThread):
         return thumb_nail
 
     def run(self):
-        videoz = list(os.scandir(self.video_dir))
+        videoz = [vid for vid in os.scandir(self.video_dir) if os.path.isfile(vid) ]
         for file in sorted(os.scandir(self.video_dir), key=os.path.getctime, reverse=True):
+            if os.path.isfile(file):
                 thub_nail = self._generate_video_thumbnail(file)
                 self.update_list_label.emit((thub_nail, file.path), self.video_dir, len(videoz))
 
 
-file_model = QFileSystemModel()
+class FileSystemModel(QFileSystemModel):
+    def hasChildren(self, parent):
+        file_info = self.fileInfo(parent)
+        _dir = QDir(file_info.absoluteFilePath())
+        return bool(_dir.entryList(self.filter()))
+
+
+file_model = FileSystemModel()
+
 
 class MyTreeView(QTreeView):
     #expanded = pyqtSignal()
@@ -269,10 +286,12 @@ class MyTreeView(QTreeView):
                 if not list(os.walk(path))[0][2]:
                     if not self.isExpanded(clickedIndex):
                         self.expand(clickedIndex)
+                        s
                     else:
                         self.collapse(clickedIndex)
                 return
             return super().mousePressEvent(e)
+
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -295,14 +314,14 @@ class MainWindow(QtWidgets.QMainWindow):
         select_folder_action = QAction(QIcon("assets\\folder.png"), "Select Folder", self)
         select_folder_action.setStatusTip("This is your button")
         select_folder_action.triggered.connect(self.onMyToolBarButtonClick)
-        about_action = QAction(QIcon("assets\\help.png"), "About", self)
-        info_action = QAction(QIcon("assets\\info.png"), "How To", self)
+        # about_action = QAction(QIcon("assets\\help.png"), "About", self)
+        # info_action = QAction(QIcon("assets\\info.png"), "How To", self)
         toolbar.addAction(select_folder_action)
         menu = self.menuBar()
         file_menu = menu.addMenu("&File")
-        help_menu = menu.addMenu("&Help")
+        # help_menu = menu.addMenu("&Help")
         file_menu.addAction(select_folder_action)
-        help_menu.addActions([about_action, info_action])
+        # help_menu.addActions([about_action, info_action])
         # top area(little space)
         self.topframe = QFrame()
         self.bottomframe.setObjectName('mvue')
@@ -823,13 +842,20 @@ class MainWindow(QtWidgets.QMainWindow):
             if self.mainframe.count() == length:
                 return
         self.cur_dir = dir
-        im = QPixmap(obj[0])
-        sized_img = im.scaled(111, 111, Qt.AspectRatioMode.IgnoreAspectRatio)
-        btn = ThumbFrame("Bloom")
-        btn.setAccessibleDescription(obj[1])
-        btn.clicked.connect(partial(self.play_thumbnail, obj))
-        btn.setFixedSize(111, 111)
-        btn.setPixmap(sized_img)
+        if obj[0]:
+            im = QPixmap(obj[0])
+            sized_img = im.scaled(111, 111, Qt.AspectRatioMode.IgnoreAspectRatio)
+            btn = ThumbFrame("Bloom")
+            btn.setAccessibleDescription(obj[1])
+            btn.clicked.connect(partial(self.play_thumbnail, obj))
+            btn.setFixedSize(111, 111)
+            btn.setPixmap(sized_img)
+        else:
+            btn = ThumbFrame("No data")
+            btn.setAlignment(Qt.Alignment.AlignCenter)
+            btn.setAccessibleDescription(obj[1])
+            btn.clicked.connect(partial(self.play_thumbnail, obj))
+            btn.setFixedSize(111, 111)
         # btn.setStyleSheet("::hover"
         #                     "{"
         #                     "border : 5px solid green;"
@@ -867,12 +893,11 @@ class MainWindow(QtWidgets.QMainWindow):
             except:
                 pass
             thumb_dir = self.temp_dir
-            if list(os.walk(path))[0][1]:
-                self.generate_thread = ThumbnailThread(path,thumb_dir)
-                self.generate_thread.update_widget.connect(self.update_widget)
-                self.generate_thread.started.connect(self.block_thread_signal)
-                self.generate_thread.finished.connect(self.release_thread_signal)
-                self.generate_thread.start()
+            self.generate_thread = ThumbnailThread(path,thumb_dir)
+            self.generate_thread.update_widget.connect(self.update_widget)
+            self.generate_thread.started.connect(self.block_thread_signal)
+            self.generate_thread.finished.connect(self.release_thread_signal)
+            self.generate_thread.start()
                 
             return
         if self.stackedWidget.currentIndex() == 0:
